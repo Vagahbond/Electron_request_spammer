@@ -1,46 +1,38 @@
+/* eslint-disable no-await-in-loop */
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
+import Burger from '../interfaces/Burger';
 
 const { session } = require('electron').remote;
 
-const burgers = [
-  {
-    name: 'Delfino Burger',
-    collerette_uid: '51185105-1f67-44bd-9b64-ef7a9242243b',
-    aid: '805',
-  },
-  {
-    name: 'Wide Putin',
-    collerette_uid: '9a7ab3ec-a7fc-4f56-b9c3-a2b1894bfc64',
-    aid: '439',
-  },
-  {
-    name: 'Le JVCD Giant ',
-    collerette_uid: '55091e81-26ee-4f38-831a-6cc2a03b12a3',
-    aid: '776',
-  },
-  {
-    name: 'Stonks',
-    collerette_uid: 'f9049212-41e5-4678-83c1-fe1fd8cec956',
-    aid: '313',
-  },
-  {
-    name: 'Make Quick Giant Again',
-    collerette_uid: '1c950ad0-bc3e-4676-a2e8-03b631da15c7',
-    aid: '229',
-  },
-  {
-    name: 'le dernier quick',
-    collerette_uid: '8ed01031-2744-452b-866b-57146cfb3ad0',
-    aid: '728',
-  },
-];
-
-export default function RequestButton() {
+interface IProps {
+  burgers: Burger[];
+  updateBurgerCallback: (fetchedBurger: Burger) => void;
+}
+export default function RequestButton({
+  burgers,
+  updateBurgerCallback,
+}: IProps) {
+  /** **************** Set the state ******************************** */
   const [spamming, setSpamming] = useState(false);
   const [nbRequests, setNbRequests] = useState(0);
-  const [selectedBurger, setSelectedBurger] = useState(burgers[0]);
-  const [targetBurgerNbLikes, setTargetBurgerNbLikes] = useState(0);
+  const [burgerUpdateCache, setBurgerUpdateCache] = useState(burgers[0]);
+
+  /** **************** Setup the cookies n shit ******************************** */
+
+  async function setacceptCookiesCookie() {
+    const cookie = {
+      url: 'www.quick.be',
+      name: 'GDPR-cookie-accepted',
+      value: '10-20-30-40',
+    };
+
+    await session.defaultSession.cookies.set(cookie);
+  }
+
+  function getCurrentBurger(): Burger {
+    return burgers[nbRequests % burgers.length];
+  }
 
   const sleep = (ms: number) =>
     new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,40 +43,44 @@ export default function RequestButton() {
   }
 
   async function loopSpamming() {
-    deleteCookies();
-    const newNbRequest = nbRequests + 1;
+    if (nbRequests % burgers.length === 0) {
+      deleteCookies();
+    }
 
-    // eslint-disable-next-line no-console
-    console.log(newNbRequest);
-
-    setNbRequests(newNbRequest);
     if (spamming) {
-      // eslint-disable-next-line no-await-in-loop
-      await sleep(3000);
+      await sleep(1000);
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
-      startRequest();
+      await startRequest();
+
+      updateBurgerCallback(burgerUpdateCache);
     }
   }
 
   async function startRequest() {
     const formData = new FormData();
     formData.append('type', 'like');
-    formData.append('collerette_uid', selectedBurger.collerette_uid);
-    formData.append('aid', selectedBurger.aid);
+    formData.append('collerette_uid', getCurrentBurger().collerette_uid);
+    formData.append('aid', getCurrentBurger().aid);
 
-    axios({
+    await axios({
       method: 'post',
       url: 'https://www.quick.be/fr/giantdesigners/likeShareCollerette',
       data: formData,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     })
       .then((res) => {
         // eslint-disable-next-line no-console
-        console.log(`spamming state : ${spamming}`);
-        // eslint-disable-next-line no-console
         console.log(res.data);
+        setBurgerUpdateCache({
+          name: getCurrentBurger().name,
+          aid: getCurrentBurger().aid,
+          collerette_uid: getCurrentBurger().collerette_uid,
+          nbLikes: res.data.like_count,
+        });
 
-        setTargetBurgerNbLikes(res.data.like_count);
-        loopSpamming();
+        // eslint-disable-next-line @typescript-eslint/no-shadow
+        setNbRequests((nbRequests) => nbRequests + 1);
+
         return res;
       })
       .catch((error) => {
@@ -99,33 +95,34 @@ export default function RequestButton() {
       loopSpamming();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spamming]);
+  }, [spamming, nbRequests]);
 
   return (
     <div
       style={{ display: 'flex', flexDirection: 'column', textAlign: 'center' }}
     >
-      <select
-        onChange={(e) =>
-          setSelectedBurger(burgers[parseInt(e.target.value, 10)])
-        }
-      >
-        {burgers.map((burger, i) => (
-          <option value={i} key={burger.collerette_uid}>
-            {burger.name}
-          </option>
-        ))}
-      </select>
-      <button
-        type="button"
-        onClick={() => {
-          setSpamming(!spamming);
-        }}
-      >
-        {spamming ? 'Stop spamming!' : 'Spam likes!'}
-      </button>
+      {spamming ? (
+        <button
+          type="button"
+          onClick={() => {
+            // eslint-disable-next-line @typescript-eslint/no-shadow
+            setSpamming(false);
+          }}
+        >
+          Stop Spamming!
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            // eslint-disable-next-line @typescript-eslint/no-shadow
+            setSpamming(true);
+          }}
+        >
+          Start spamming !
+        </button>
+      )}
       <span>You spammed {nbRequests} times.</span>
-      <span>Total likes on this burger: {targetBurgerNbLikes}.</span>
     </div>
   );
 }
